@@ -25,6 +25,7 @@
 #define BUTTON_DEBOUNCE_MS  40    /* Must be stable for this long            */
 #define BUTTON_LONG_MS      500   /* Hold time before long-press fires       */
 #define BUTTON_REPEAT_MS    150   /* Repeat interval while held (brightness) */
+#define BUTTON_COOLDOWN_MS  100   /* Ignore input after short press          */
 
 /* ==========================================================================
  * Button events - posted to g_button_queue
@@ -34,9 +35,9 @@ typedef enum {
     BTN_LEFT,           /* Short press: navigate left  */
     BTN_MID,            /* Short press: select / enter */
     BTN_RIGHT,          /* Short press: navigate right */
-    BTN_LEFT_LONG,      /* Long press:  brightness -   */
-    BTN_MID_LONG,       /* Long press:  (reserved)     */
-    BTN_RIGHT_LONG,     /* Long press:  brightness +   */
+    BTN_LEFT_LONG,      /* Long press:  brightness -        */
+    BTN_MID_LONG,       /* Long press:  exit Buzzer-Only    */
+    BTN_RIGHT_LONG,     /* Long press:  brightness +        */
 } btn_event_t;
 
 /* ==========================================================================
@@ -58,6 +59,7 @@ extern TX_QUEUE g_button_queue;
 void peripherals_task_init(void);
 void peripherals_task_entry(ULONG arg);
 void peripherals_on_tick(void);
+void peripherals_update_dose(float dose_usv_h);
 
 void    led_set_color(uint8_t r, uint8_t g, uint8_t b);
 void    led_off(void);

@@ -2,7 +2,7 @@
   ******************************************************************************
   * @file    st7789.c
   * @author  Florian Gotschim
-  * @brief   ST7789V2 Display Driver - optimized for RadOne Handheld
+  * @brief   ST7789V2 Display Driver - DMA accelerated for RadOne Handheld
   ******************************************************************************
   */
 
@@ -40,6 +40,28 @@
 #define LINE_BUF_PIXELS ST7789_WIDTH
 static uint8_t s_line_buf[LINE_BUF_PIXELS * 2];
 
+/* ==========================================================================
+ * DMA synchronisation semaphore
+ * Created once in ST7789_Init, used by ST7789_WriteDataDMA
+ * ========================================================================== */
+static TX_SEMAPHORE s_dma_sem;
+static uint8_t      s_dma_ready = 0;
+
+/* ==========================================================================
+ * HAL DMA completion callback - called from SPI1 IRQ context
+ * ========================================================================== */
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1) {
+        ST7789_CS_HIGH();
+        /* Release semaphore from ISR context */
+        tx_semaphore_put(&s_dma_sem);
+    }
+}
+
+/* ==========================================================================
+ * Private: blocking 1-byte SPI (commands, single data bytes)
+ * ========================================================================== */
 static void ST7789_WriteCommand(uint8_t cmd)
 {
     ST7789_DC_LOW();
@@ -56,6 +78,22 @@ static void ST7789_WriteData(uint8_t data)
     ST7789_CS_HIGH();
 }
 
+/* ==========================================================================
+ * Private: DMA transfer - non-blocking, waits on semaphore for completion
+ * CS is pulled LOW here, raised in HAL_SPI_TxCpltCallback
+ * ========================================================================== */
+static void ST7789_WriteDataDMA(uint8_t *data, uint32_t len)
+{
+    ST7789_DC_HIGH();
+    ST7789_CS_LOW();
+    HAL_SPI_Transmit_DMA(&hspi1, data, (uint16_t)len);
+    /* Block this thread until DMA completes (callback puts semaphore) */
+    tx_semaphore_get(&s_dma_sem, TX_WAIT_FOREVER);
+}
+
+/* ==========================================================================
+ * Private: small blocking transfer (< 8 bytes, not worth DMA overhead)
+ * ========================================================================== */
 static void ST7789_WriteDataMulti(uint8_t *data, uint32_t len)
 {
     ST7789_DC_HIGH();
@@ -81,8 +119,15 @@ static void ST7789_SetAddressWindow(uint16_t x0, uint16_t y0,
     ST7789_WriteCommand(ST7789_RAMWR);
 }
 
+/* ==========================================================================
+ * Init
+ * ========================================================================== */
 void ST7789_Init(void)
 {
+    /* Create DMA semaphore - starts at 0, callback puts it */
+    tx_semaphore_create(&s_dma_sem, "ST7789_DMA", 0);
+    s_dma_ready = 1;
+
     ST7789_RST_LOW();
     tx_thread_sleep(1);
     ST7789_RST_HIGH();
@@ -101,6 +146,9 @@ void ST7789_Init(void)
     ST7789_FillScreen(ST7789_BLACK);
 }
 
+/* ==========================================================================
+ * Fill operations - use DMA for full line transfers
+ * ========================================================================== */
 void ST7789_FillScreen(uint16_t color)
 {
     ST7789_FillRect(0, 0, ST7789_WIDTH, ST7789_HEIGHT, color);
@@ -121,13 +169,17 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
     }
 
     ST7789_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+
+    /* Use DMA for each row - CPU free during transfer */
     ST7789_DC_HIGH();
-    ST7789_CS_LOW();
-    for (uint16_t row = 0; row < h; row++)
-        HAL_SPI_Transmit(&hspi1, s_line_buf, w * 2, HAL_MAX_DELAY);
-    ST7789_CS_HIGH();
+    for (uint16_t row = 0; row < h; row++) {
+        ST7789_WriteDataDMA(s_line_buf, w * 2);
+    }
 }
 
+/* ==========================================================================
+ * Pixel
+ * ========================================================================== */
 void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color)
 {
     if (x >= ST7789_WIDTH || y >= ST7789_HEIGHT) return;
@@ -136,6 +188,9 @@ void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color)
     ST7789_WriteDataMulti(data, 2);
 }
 
+/* ==========================================================================
+ * Character rendering - DMA per row
+ * ========================================================================== */
 void ST7789_DrawChar(uint16_t x, uint16_t y, char c,
                      uint16_t color, uint16_t bg, const FontDef *font)
 {
@@ -150,7 +205,7 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c,
 
     ST7789_SetAddressWindow(x, y, x + w - 1, y + h - 1);
     ST7789_DC_HIGH();
-    ST7789_CS_LOW();
+
     for (uint8_t row = 0; row < h; row++) {
         uint8_t row_buf[24 * 2];
         for (uint8_t col = 0; col < w; col++) {
@@ -161,9 +216,8 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c,
             row_buf[col * 2]     = px >> 8;
             row_buf[col * 2 + 1] = px & 0xFF;
         }
-        HAL_SPI_Transmit(&hspi1, row_buf, w * 2, HAL_MAX_DELAY);
+        ST7789_WriteDataDMA(row_buf, w * 2);
     }
-    ST7789_CS_HIGH();
 }
 
 void ST7789_DrawString(uint16_t x, uint16_t y, const char *str,
@@ -182,6 +236,9 @@ void ST7789_DrawString(uint16_t x, uint16_t y, const char *str,
     }
 }
 
+/* ==========================================================================
+ * Shapes
+ * ========================================================================== */
 void ST7789_DrawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
                      uint16_t color)
 {
@@ -275,13 +332,9 @@ uint16_t ST7789_Color565(uint8_t r, uint8_t g, uint8_t b)
 void ST7789_DisplayOn(void)  { ST7789_WriteCommand(ST7789_DISPON); }
 void ST7789_DisplayOff(void) { ST7789_WriteCommand(ST7789_DISPOFF); }
 
-/* ---------------------------------------------------------------------------
- * GFX Font rendering - Adafruit GFXfont compatible
- * Proportional fonts with per-glyph width, height and baseline offset.
- *
- * IMPORTANT: y is the BASELINE, not the top of the character.
- * Use y = font->yAdvance + top_margin for first line.
- * --------------------------------------------------------------------------- */
+/* ==========================================================================
+ * GFX Font rendering - DMA per pixel row
+ * ========================================================================== */
 void ST7789_DrawGFXChar(uint16_t x, uint16_t y, unsigned char c,
                          uint16_t color, uint16_t bg, const GFXfont *font)
 {
@@ -297,7 +350,6 @@ void ST7789_DrawGFXChar(uint16_t x, uint16_t y, unsigned char c,
     int8_t   yo  = glyph->yOffset;
     uint16_t bo  = glyph->bitmapOffset;
 
-    /* Clear background for this glyph slot */
     if (bg != color)
         ST7789_FillRect(x, (int16_t)y + yo, glyph->xAdvance, gh, bg);
 
@@ -326,7 +378,6 @@ void ST7789_DrawGFXString(uint16_t x, uint16_t y, const char *str,
     if (!font || !str) return;
     uint16_t cx = x;
     uint16_t cy = y;
-
     while (*str)
     {
         if (*str == '\n') {
