@@ -25,7 +25,9 @@
 /* ============================================================================
  * Set to 1 to enable debug output, 0 to disable
  * ============================================================================ */
-#define RADONE_DEBUG  1
+#define RADONE_DEBUG  		0		/* 1 = skip boot battery check, enable UART  */
+#define BATTERY_TASK_TEST   0		/* 1 = use BAT_TEST_VOLTAGE instead of ADC   */
+#define BAT_TEST_VOLTAGE    2.85f   /* 2.85 = critical, 3.05 = warning */
 
 /* ============================================================================
  * Debug macro - compiles to nothing when RADONE_DEBUG == 0

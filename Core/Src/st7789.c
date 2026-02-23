@@ -146,6 +146,36 @@ void ST7789_Init(void)
     ST7789_FillScreen(ST7789_BLACK);
 }
 
+void ST7789_InitBlocking(void)
+{
+    ST7789_RST_LOW();
+    HAL_Delay(10);
+    ST7789_RST_HIGH();
+    HAL_Delay(120);
+    ST7789_WriteCommand(ST7789_SWRESET);
+    HAL_Delay(150);
+    ST7789_WriteCommand(ST7789_SLPOUT);
+    HAL_Delay(120);
+    ST7789_WriteCommand(ST7789_COLMOD);
+    ST7789_WriteData(0x55);
+    ST7789_WriteCommand(ST7789_MADCTL);
+    ST7789_WriteData(0x00);
+    ST7789_WriteCommand(ST7789_INVON);
+
+    /* Fill black blocking - no DMA, no semaphore needed */
+    ST7789_SetAddressWindow(0, 0, ST7789_WIDTH - 1, ST7789_HEIGHT - 1);
+    ST7789_DC_HIGH();
+    ST7789_CS_LOW();
+    uint8_t black[2] = {0x00, 0x00};
+    for (uint32_t i = 0; i < ST7789_WIDTH * ST7789_HEIGHT; i++) {
+        HAL_SPI_Transmit(&hspi1, black, 2, HAL_MAX_DELAY);
+    }
+    ST7789_CS_HIGH();
+
+    ST7789_WriteCommand(ST7789_DISPON);
+    HAL_Delay(10);
+}
+
 /* ==========================================================================
  * Fill operations - use DMA for full line transfers
  * ========================================================================== */
@@ -175,6 +205,18 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
     for (uint16_t row = 0; row < h; row++) {
         ST7789_WriteDataDMA(s_line_buf, w * 2);
     }
+}
+void ST7789_FillRect_blocking(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
+{
+    ST7789_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+    ST7789_DC_HIGH();
+    ST7789_CS_LOW();
+    uint8_t hi = color >> 8, lo = color & 0xFF;
+    for (uint32_t i = 0; i < w * h; i++) {
+        HAL_SPI_Transmit(&hspi1, &hi, 1, HAL_MAX_DELAY);
+        HAL_SPI_Transmit(&hspi1, &lo, 1, HAL_MAX_DELAY);
+    }
+    ST7789_CS_HIGH();
 }
 
 /* ==========================================================================
@@ -404,4 +446,9 @@ uint16_t ST7789_GFXStringWidth(const char *str, const GFXfont *font)
         str++;
     }
     return w;
+}
+
+void ST7789_Sleep(void) {
+    ST7789_WriteCommand(0x28);  /* DISPOFF */
+    ST7789_WriteCommand(0x10);  /* SLPIN   */
 }

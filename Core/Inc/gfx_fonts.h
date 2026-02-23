@@ -43,5 +43,7 @@ extern const GFXfont FreeSans12pt7b;
 extern const GFXfont FreeSans18pt7b;
 extern const GFXfont FreeSansBold12pt7b;
 extern const GFXfont FreeSansBold18pt7b;
+extern const GFXfont FreeSans24pt7b;
+extern const GFXfont FreeSansBold24pt7b;
 
 #endif /* INC_GFX_FONTS_H_ */

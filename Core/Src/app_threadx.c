@@ -19,6 +19,7 @@
 #include "main.h"
 #include "tim.h"
 #include "usart.h"
+#include "battery.h"
 #include "sensor.h"
 #include "processing.h"
 #include "display.h"
@@ -51,11 +52,13 @@ static ULONG s_processing_q_storage[SENSOR_DATA_QUEUE_DEPTH * SENSOR_DATA_MSG_WO
 static ULONG s_display_q_storage   [DISPLAY_QUEUE_DEPTH     * DISPLAY_DATA_MSG_WORDS];
 static ULONG s_button_q_storage    [8];
 
+static TX_THREAD s_battery_task;
 static TX_THREAD s_sensor_task;
 static TX_THREAD s_processing_task;
 static TX_THREAD s_display_task;
 static TX_THREAD s_peripherals_task;
 
+static ULONG s_battery_stack	[BATTERY_TASK_STACK_SIZE / sizeof(ULONG)];
 static ULONG s_sensor_stack     [SENSOR_TASK_STACK_SIZE      / sizeof(ULONG)];
 static ULONG s_processing_stack [PROCESSING_TASK_STACK_SIZE  / sizeof(ULONG)];
 static ULONG s_display_stack    [DISPLAY_TASK_STACK_SIZE      / sizeof(ULONG)];
@@ -106,6 +109,13 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
     processing_task_init(&g_processing_queue, &g_display_queue);
     display_task_init(&g_display_queue, &g_button_queue);
     peripherals_task_init();
+
+    ret = tx_thread_create(&s_battery_task, "BatteryTask",
+                           battery_task_entry, 0,
+                           s_battery_stack, sizeof(s_battery_stack),
+                           BATTERY_TASK_PRIORITY, BATTERY_TASK_PRIORITY,
+                           TX_NO_TIME_SLICE, TX_AUTO_START);
+    if (ret != TX_SUCCESS) { Error_Handler(); }
 
     ret = tx_thread_create(&s_sensor_task, "SensorTask",
                            sensor_task_entry, 0,

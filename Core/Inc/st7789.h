@@ -42,9 +42,11 @@ extern "C" {
 #define ST7789_LIGHTGRAY   0xC618
 
 void ST7789_Init(void);
+void ST7789_InitBlocking(void);
 void ST7789_FillScreen(uint16_t color);
 void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color);
 void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
+void ST7789_FillRect_blocking(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void ST7789_DrawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void ST7789_DrawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint16_t color);
 void ST7789_DrawCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color);
@@ -80,6 +82,8 @@ void     ST7789_DrawGFXString(uint16_t x, uint16_t y, const char *str,
                                uint16_t color, uint16_t bg,
                                const GFXfont *font);
 uint16_t ST7789_GFXStringWidth(const char *str, const GFXfont *font);
+
+void ST7789_Sleep(void);
 
 #define ST7789_PutChar(x,y,c,col,bg)  ST7789_DrawChar(x,y,c,col,bg,ST7789_DEFAULT_FONT)
 #define ST7789_Print(x,y,str,col,bg)  ST7789_DrawString(x,y,str,col,bg,ST7789_DEFAULT_FONT)

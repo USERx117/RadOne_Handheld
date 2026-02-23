@@ -32,7 +32,9 @@
 /* USER CODE BEGIN Includes */
 #include "st7789.h"
 #include "fonts.h"
-#include <stdio.h>
+#include "gfx_fonts.h"
+#include "debug.h"
+#include "battery.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -90,30 +92,32 @@ static float battery_read_voltage(void)
 static void show_low_battery_screen(float voltage)
 {
 #if RADONE_DEBUG
-    /* Skip low battery check in debug mode */
     (void)voltage;
     return;
 #endif
 
-    /* Init display - TIM2 for backlight already running */
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, 800);
 
-    ST7789_Init();
-    ST7789_FillScreen(ST7789_BLACK);
+    ST7789_InitBlocking();
 
-    ST7789_FillRect(95, 30, 50, 50, ST7789_RED);
-    ST7789_DrawString(107, 44, "!", ST7789_WHITE, ST7789_RED, &Font_12x16);
+    /* Warning symbol - red box with ! */
+    ST7789_FillRect_blocking(90, 10, 60, 50, ST7789_RED);
+    ST7789_DrawGFXString(111, 52, "!", ST7789_WHITE, ST7789_RED, &FreeSansBold24pt7b);
 
-    ST7789_DrawString(14, 100, "LOW  BATTERY", ST7789_RED, ST7789_BLACK, &Font_12x16);
+    /* LOW BATTERY */
+    ST7789_DrawGFXString(10, 145, "LOW", ST7789_RED, ST7789_BLACK, &FreeSansBold24pt7b);
+    ST7789_DrawGFXString(10, 185, "BATTERY", ST7789_RED, ST7789_BLACK, &FreeSansBold24pt7b);
 
-    char buf[24];
-    snprintf(buf, sizeof(buf), "%.2f V", voltage);
-    ST7789_DrawString(84, 130, buf, ST7789_WHITE, ST7789_BLACK, &Font_12x16);
+    /* Voltage */
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.2fV", voltage);
+    ST7789_DrawGFXString(55, 230, buf, ST7789_WHITE, ST7789_BLACK, &FreeSansBold18pt7b);
 
-    ST7789_DrawString(20, 170, "Please charge", ST7789_LIGHTGRAY, ST7789_BLACK, &Font_8x8);
-    ST7789_DrawString(15, 185, "before use (>3.0V)", ST7789_LIGHTGRAY, ST7789_BLACK, &Font_8x8);
+    /* Hint */
+    ST7789_DrawString(22, 252, "Please charge (>3.0V)", ST7789_LIGHTGRAY, ST7789_BLACK, &Font_8x8);
 
+    /* Halt forever - do not boot */
     while (1) {
         __WFI();
     }

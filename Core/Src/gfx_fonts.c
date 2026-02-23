@@ -25,3 +25,5 @@
 #include "FreeSans18pt7b.h"
 #include "FreeSansBold12pt7b.h"
 #include "FreeSansBold18pt7b.h"
+#include "FreeSans24pt7b.h"
+#include "FreeSansBold24pt7b.h"
